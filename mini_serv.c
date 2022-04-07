@@ -6,7 +6,7 @@
 /*   By: jpceia <joao.p.ceia@gmail.com>             +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2022/04/05 19:46:45 by jpceia            #+#    #+#             */
-/*   Updated: 2022/04/06 20:40:48 by jpceia           ###   ########.fr       */
+/*   Updated: 2022/04/07 10:33:30 by jpceia           ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -26,7 +26,57 @@ struct client_s
 {
     int fd;
     int id;
+    char *buf;
 };
+
+
+char *str_join(char *buf, char *add)
+{
+	char	*newbuf;
+	int		len;
+
+	if (buf == 0)
+		len = 0;
+	else
+		len = strlen(buf);
+	newbuf = malloc(sizeof(*newbuf) * (len + strlen(add) + 1));
+	if (newbuf == 0)
+		return (0);
+	newbuf[0] = 0;
+	if (buf != 0)
+		strcat(newbuf, buf);
+	free(buf);
+	strcat(newbuf, add);
+	return (newbuf);
+}
+
+int extract_message(char **buf, char **msg)
+{
+	char	*newbuf;
+	int	i;
+
+	*msg = 0;
+	if (*buf == 0)
+		return (0);
+	i = 0;
+	while ((*buf)[i])
+	{
+		if ((*buf)[i] == '\n')
+		{
+			newbuf = calloc(1, sizeof(*newbuf) * (strlen(*buf + i + 1) + 1));
+			if (newbuf == 0)
+				return (-1);
+			strcpy(newbuf, *buf + i + 1);
+			*msg = *buf;
+			(*msg)[i + 1] = 0;
+			*buf = newbuf;
+			return (1);
+		}
+		i++;
+	}
+	return (0);
+}
+
 
 void exit_with_message(char *s, int status)
 {
@@ -50,6 +100,7 @@ int main(int argc, char *argv[])
     struct client_s connections[SOMAXCONN];
     int n_connections = 0;
     char msg[MSG_SIZE];
+    char chunk[MSG_SIZE + 1];
 
     fd_set current_sockets, ready_sockets;
 
@@ -86,6 +137,7 @@ int main(int argc, char *argv[])
                 exit_with_message("Fatal error\n", 1);
             connections[n_connections].fd = cli;
             connections[n_connections].id = counter;
+            connections[n_connections].buf = NULL;
             ++n_connections;
             FD_SET(cli, &current_sockets);
             sprintf(msg, "server: client %d just arrived\n", counter);
@@ -100,7 +152,7 @@ int main(int argc, char *argv[])
         if (idx == n_connections)
             continue ;
         struct client_s cli = connections[idx];
-        int n = recv(cli.fd, msg, MSG_SIZE, 0);
+        int n = recv(cli.fd, chunk, MSG_SIZE, 0);
         if (n < 0)
             exit_with_message("Fatal error\n", 1);
         else if (n == 0) // Disconnect
@@ -114,10 +166,19 @@ int main(int argc, char *argv[])
         }
         else
         {
-            msg[n] = '\0';
-            char msg_to_send[MSG_SIZE * 2];
-            sprintf(msg_to_send, "client %d: %s\n", counter, msg);
-            broadcast(msg_to_send, connections, n_connections);
+            chunk[n] = '\0';
+            cli.buf = str_join(cli.buf, chunk);
+            while (42)
+            {
+                char *line = NULL;
+                int status = extract_message(&cli.buf, &line);
+                if (status == 0)
+                    break ;
+                if (status == -1)
+                    exit_with_message("Fatal error\n", 1);
+                sprintf(msg, "client %d: %s\n", counter, line);
+                broadcast(msg, connections, n_connections);
+            }
         }
     }
     return (0);
