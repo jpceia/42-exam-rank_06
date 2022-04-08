@@ -6,7 +6,7 @@
 /*   By: jpceia <joao.p.ceia@gmail.com>             +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2022/04/05 19:46:45 by jpceia            #+#    #+#             */
-/*   Updated: 2022/04/07 10:33:30 by jpceia           ###   ########.fr       */
+/*   Updated: 2022/04/08 16:43:35 by jpceia           ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -29,6 +29,11 @@ struct client_s
     char *buf;
 };
 
+// global variablas
+struct client_s connections[SOMAXCONN];
+int n_connections = 0;
+int listener = 0;
+fd_set current_sockets;
 
 char *str_join(char *buf, char *add)
 {
@@ -97,14 +102,13 @@ int main(int argc, char *argv[])
     if (argc == 1)
         exit_with_message("Wrong number of arguments\n", 1);
 
-    struct client_s connections[SOMAXCONN];
-    int n_connections = 0;
+
     char msg[MSG_SIZE];
     char chunk[MSG_SIZE + 1];
 
-    fd_set current_sockets, ready_sockets;
+    fd_set ready_sockets;
 
-    int listener = socket(AF_INET, SOCK_STREAM, 0);
+    listener = socket(AF_INET, SOCK_STREAM, 0);
     if (listener < 0)
         exit_with_message("Fatal error\n", 1);
     struct sockaddr_in addr;
@@ -176,7 +180,9 @@ int main(int argc, char *argv[])
                     break ;
                 if (status == -1)
                     exit_with_message("Fatal error\n", 1);
-                sprintf(msg, "client %d: %s\n", counter, line);
+                // status == 1
+                sprintf(msg, "client %d: %s", counter, line);
+                free(line);
                 broadcast(msg, connections, n_connections);
             }
         }
