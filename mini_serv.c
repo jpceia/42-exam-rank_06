@@ -6,7 +6,7 @@
 /*   By: jpceia <joao.p.ceia@gmail.com>             +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2022/04/05 19:46:45 by jpceia            #+#    #+#             */
-/*   Updated: 2022/04/08 16:43:35 by jpceia           ###   ########.fr       */
+/*   Updated: 2022/04/08 17:34:27 by jpceia           ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -82,35 +82,85 @@ int extract_message(char **buf, char **msg)
 	return (0);
 }
 
-
-void exit_with_message(char *s, int status)
+struct client_s add_connection(int fd, int id)
 {
-    write(STDERR_FILENO, s, strlen(s));
-    exit(status);
+    connections[n_connections].fd = fd;
+    connections[n_connections].id = id;
+    connections[n_connections].buf = NULL;
+    ++n_connections;
+    FD_SET(fd, &current_sockets);
+    return (connections[n_connections - 1]);
 }
 
-void broadcast(char *msg, struct client_s *clients, int n_clients)
+void remove_connection(int idx)
 {
-    for (int i = 0; i < n_clients; ++i)
-        if (send(clients[i].fd, msg, strlen(msg), 0) < 0)
-            exit_with_message("Error sending message\n", 1);
+    struct client_s cli = connections[idx];
+
+    if (cli.fd > 0)
+    {
+        close(cli.fd);
+        cli.fd = 0;
+    }
+    if (cli.buf != NULL)
+    {
+        free(cli.buf);
+        cli.buf = NULL;
+    }
+    connections[idx] = connections[n_connections - 1];
+    --n_connections;
+    FD_CLR(cli.fd, &current_sockets);
+}
+
+void cleanup_globals()
+{
+    if (listener > 0)
+    {
+        close(listener);
+        listener = 0;
+    }
+    while (n_connections > 0)
+        remove_connection(0);
+}
+
+void wrong_args_nbr()
+{
+    char *msg = "Wrong number of arguments\n";
+    write(STDERR_FILENO, msg, strlen(msg));
+    exit(1);
+}
+
+void fatal_error()
+{
+    char *msg = "Fatal error\n";
+    write(STDERR_FILENO, msg, strlen(msg));
+    cleanup_globals();
+    exit(1);
+}
+
+void broadcast(char *msg, int from_id)
+{
+    for (int i = 0; i < n_connections; ++i)
+    {
+        struct client_s cli = connections[i];
+        if (cli.id == from_id)
+            continue ;
+        if (send(cli.fd, msg, strlen(msg), 0) < 0)
+            fatal_error();
+    }
     printf("%s", msg);
 }
 
 int main(int argc, char *argv[])
 {
     if (argc == 1)
-        exit_with_message("Wrong number of arguments\n", 1);
-
+        wrong_args_nbr();
 
     char msg[MSG_SIZE];
     char chunk[MSG_SIZE + 1];
 
-    fd_set ready_sockets;
-
     listener = socket(AF_INET, SOCK_STREAM, 0);
     if (listener < 0)
-        exit_with_message("Fatal error\n", 1);
+        fatal_error();
     struct sockaddr_in addr;
     bzero(&addr, sizeof(addr));
     addr.sin_family = AF_INET;
@@ -118,35 +168,30 @@ int main(int argc, char *argv[])
     addr.sin_port = htons(atoi(argv[1]));
 
     if (bind(listener, (struct sockaddr *)&addr, sizeof(addr)) < 0)
-        exit_with_message("Fatal error\n", 1);
+        fatal_error();
 
     if (listen(listener, SOMAXCONN) < 0)
-        exit_with_message("Fatal error\n", 1);
+        fatal_error();
 
     FD_ZERO(&current_sockets);
     FD_SET(listener, &current_sockets);
-    
+
     int counter = 0;
     while (42)
     {
-        ready_sockets = current_sockets;
+        fd_set ready_sockets = current_sockets;
         if (select(FD_SETSIZE, &ready_sockets, NULL, NULL, NULL) < 0)
-            exit_with_message("Fatal error\n", 1);
+            fatal_error();
         if (FD_ISSET(listener, &ready_sockets)) // new connection
         {
             struct sockaddr_in cli_addr;
-            int len = sizeof(cli_addr);
-            int cli = accept(listener, (struct sockaddr *)&cli_addr, &len);
-            if (cli < 0)
-                exit_with_message("Fatal error\n", 1);
-            connections[n_connections].fd = cli;
-            connections[n_connections].id = counter;
-            connections[n_connections].buf = NULL;
-            ++n_connections;
-            FD_SET(cli, &current_sockets);
-            sprintf(msg, "server: client %d just arrived\n", counter);
-            broadcast(msg, connections, n_connections);
-            ++counter;
+            socklen_t len = sizeof(cli_addr);
+            int fd = accept(listener, (struct sockaddr *)&cli_addr, &len);
+            if (fd < 0)
+                fatal_error();
+            struct client_s cli = add_connection(fd, counter++);
+            sprintf(msg, "server: client %d just arrived\n", cli.id);
+            broadcast(msg, cli.id);
             continue ;
         }
         // else
@@ -158,15 +203,12 @@ int main(int argc, char *argv[])
         struct client_s cli = connections[idx];
         int n = recv(cli.fd, chunk, MSG_SIZE, 0);
         if (n < 0)
-            exit_with_message("Fatal error\n", 1);
+            fatal_error();
         else if (n == 0) // Disconnect
         {
-            close(cli.fd);
             sprintf(msg, "server: client %d just left\n", cli.id);
-            connections[idx] = connections[n_connections - 1];
-            --n_connections;
-            FD_CLR(cli.fd, &current_sockets);
-            broadcast(msg, connections, n_connections);
+            broadcast(msg, cli.id);
+            remove_connection(idx);
         }
         else
         {
@@ -179,11 +221,11 @@ int main(int argc, char *argv[])
                 if (status == 0)
                     break ;
                 if (status == -1)
-                    exit_with_message("Fatal error\n", 1);
+                    fatal_error();
                 // status == 1
-                sprintf(msg, "client %d: %s", counter, line);
+                sprintf(msg, "client %d: %s", cli.id, line);
                 free(line);
-                broadcast(msg, connections, n_connections);
+                broadcast(msg, cli.id);
             }
         }
     }
