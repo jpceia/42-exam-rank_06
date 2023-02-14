@@ -96,6 +96,7 @@ void remove_connection(int idx)
 {
     struct client_s cli = connections[idx];
 
+    FD_CLR(cli.fd, &current_sockets);
     if (cli.fd > 0)
     {
         close(cli.fd);
@@ -108,7 +109,6 @@ void remove_connection(int idx)
     }
     connections[idx] = connections[n_connections - 1];
     --n_connections;
-    FD_CLR(cli.fd, &current_sockets);
 }
 
 void cleanup_globals()
