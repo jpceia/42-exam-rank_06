@@ -219,14 +219,10 @@ int main(int argc, char *argv[])
             {
                 if (extract_message(&cli.buf, &line) < 0)
                     fatal_error();
+                if (line == NULL)
+                    break ;
                 sprintf(msg, "client %d: ", cli.id);
                 broadcast(msg, cli.id);
-                if (line == NULL)
-                {
-                    broadcast(cli.buf, cli.id);
-                    cli.buf = NULL;
-                    break ;
-                }
                 broadcast(line, cli.id);
                 free(line);
             }
