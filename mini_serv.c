@@ -214,18 +214,21 @@ int main(int argc, char *argv[])
         {
             chunk[n] = '\0';
             cli.buf = str_join(cli.buf, chunk);
+            char *line = NULL;
             while (42)
             {
-                char *line = NULL;
-                int status = extract_message(&cli.buf, &line);
-                if (status == 0)
-                    break ;
-                if (status == -1)
+                if (extract_message(&cli.buf, &line) < 0)
                     fatal_error();
-                // status == 1
                 sprintf(msg, "client %d: %s", cli.id, line);
-                free(line);
                 broadcast(msg, cli.id);
+                if (line == NULL)
+                {
+                    broadcast(cli.buf, cli.id);
+                    cli.buf = NULL;
+                    break ;
+                }
+                broadcast(line, cli.id);
+                free(line);
             }
         }
     }
