@@ -126,7 +126,7 @@ void wrong_args_nbr()
 {
     char *msg = "Wrong number of arguments\n";
     write(STDERR_FILENO, msg, strlen(msg));
-    exit(1);
+    exit(EXIT_FAILURE);
 }
 
 void fatal_error()
@@ -134,7 +134,7 @@ void fatal_error()
     char *msg = "Fatal error\n";
     write(STDERR_FILENO, msg, strlen(msg));
     cleanup_globals();
-    exit(1);
+    exit(EXIT_FAILURE);
 }
 
 void broadcast(char *msg, int from_id)
@@ -229,5 +229,5 @@ int main(int argc, char *argv[])
             }
         }
     }
-    return (0);
+    return (EXIT_SUCCESS);
 }
